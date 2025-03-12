@@ -1,0 +1,302 @@
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+    body {
+        background-color: rgb(98, 98, 98);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+    canvas {
+        display: block;
+        background-color: blueviolet;
+    }
+    .custom-range {
+        appearance: none; /* Remove default styling */
+        width: calc(100% / 2); /* Full-width */
+        height: 3%; /* Height of the track */
+        background: #ddd; /* Track color */
+        border-radius: 5px; /* Rounded track */
+        outline: none; /* Remove outline */
+    }
+    .custom-range::-webkit-slider-thumb {
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background-color: blueviolet;
+    } 
+</style>
+<body>
+    <canvas id="canvas"></canvas>
+    <input type="range" class="custom-range" value="90" min="10" max="170" />
+</body>
+<script>
+class Game {
+    constructor() {
+        this.canvas = document.querySelector("canvas");
+        this.ctx = this.canvas.getContext('2d');
+        this.canvas.width = window.innerWidth / 2;
+        this.canvas.height = (window.innerHeight / 3) * 2.8;
+
+        this.ball = {
+            x: this.canvas.width / 2,
+            y: this.canvas.height - 10,
+            r: 10,
+            speed: 10 // Set speed for the ball
+        };
+
+        this.rAngle = 90; // Angle in degrees
+        this.updates = false;
+
+        // Box parameters
+        this.boxes = [];
+        this.boxWidth = 40;
+        this.boxHeight = 40;
+
+        this.gameOver = false;
+
+        this.init();
+    }
+
+    init() {
+        const inp = document.querySelector('.custom-range');
+        inp.addEventListener('input', () => {
+            this.rAngle = inp.value;
+        });
+
+        inp.addEventListener('mouseup', this.release.bind(this));
+        inp.addEventListener('touchend', this.release.bind(this));
+
+        window.addEventListener('keyup', this.handleKeyUp.bind(this));
+        document.addEventListener('keydown', this.keys.bind(this));
+        
+        this.boxFunc();
+        this.animate();
+        window.addEventListener('resize', this.resizeCanvas.bind(this));
+    }
+
+    createBox() {
+        let newBox;
+        let overlap;
+
+        do {
+            overlap = false;
+            newBox = {
+                x: Math.random() * (this.canvas.width - this.boxWidth),
+                y: Math.random() * ((this.canvas.height / 2) - this.boxHeight),
+                width: this.boxWidth,
+                height: this.boxHeight
+            };
+
+            // Check for overlap with existing boxes
+            for (const box of this.boxes) {
+                if (newBox.x < box.x + box.width + 5 &&
+                    newBox.x + newBox.width + 5 > box.x &&
+                    newBox.y < box.y + box.height + 5 &&
+                    newBox.y + newBox.height + 5 > box.y) {
+                    overlap = true; // Found an overlap
+                    break;
+                }
+            }
+        } while (overlap); // Repeat until no overlap
+
+        this.boxes.push(newBox); // Add new box after confirming no overlap
+    }
+
+    draw() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Draw the ray only if the ball is not moving
+        if (!this.updates) {
+            this.ctx.strokeStyle = 'yellow'; // Ray color
+            const rayLength = this.canvas.height; // Length of the ray
+            let rayEndX = this.ball.x + Math.cos(this.rAngle * Math.PI / 180) * rayLength;
+            let rayEndY = this.ball.y - Math.sin(this.rAngle * Math.PI / 180) * rayLength;
+
+            // Check for intersection with boundaries
+            const boundary = this.checkRayBoundary(this.ball.x, this.ball.y, rayEndX, rayEndY);
+            if (boundary) {
+                rayEndX = boundary.x;
+                rayEndY = boundary.y;
+            }
+
+            this.ctx.beginPath();
+            this.ctx.moveTo(this.ball.x, this.ball.y);
+            this.ctx.lineTo(rayEndX, rayEndY);
+            this.ctx.stroke();
+            this.ctx.closePath();
+        }
+
+        // Draw boxes
+        this.ctx.fillStyle = 'red'; // Box color
+        this.boxes.forEach(box => {
+            this.ctx.fillRect(box.x, box.y, box.width, box.height);
+        });
+
+        // Draw the ball
+        this.ctx.fillStyle = 'orange'; // Ball color
+        this.ctx.beginPath();
+        this.ctx.arc(this.ball.x, this.ball.y, this.ball.r, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.closePath();
+    }
+
+    checkRayBoundary(startX, startY, endX, endY) {
+        let boundaryX, boundaryY;
+
+        if (endX < 0) {
+            boundaryX = 0;
+            boundaryY = startY + (endY - startY) * (0 - startX) / (endX - startX);
+        } else if (endX > this.canvas.width) {
+            boundaryX = this.canvas.width;
+            boundaryY = startY + (endY - startY) * (this.canvas.width - startX) / (endX - startX);
+        } else if (endY < 0) {
+            boundaryY = 0;
+            boundaryX = startX + (endX - startX) * (0 - startY) / (endY - startY);
+        } else if (endY > this.canvas.height) {
+            boundaryY = this.canvas.height;
+            boundaryX = startX + (endX - startX) * (this.canvas.height - startY) / (endY - startY);
+        }
+
+        if (boundaryX !== undefined && boundaryY !== undefined) {
+            return { x: boundaryX, y: boundaryY };
+        }
+        return null; // No intersection
+    }
+
+    keys(event) {
+        const pAngle = 2;
+        if (event.key === 'ArrowLeft') {
+            this.rAngle += pAngle; // Decrease angle for left arrow
+            if (this.rAngle > 170) this.rAngle = 170; // Wrap around
+        } else if (event.key === 'ArrowRight') {
+            this.rAngle -= pAngle; // Increase angle for right arrow
+            if (this.rAngle < 10) this.rAngle = 10; // Wrap around
+        }
+    }
+
+    release() {
+        document.removeEventListener('keydown', this.keys.bind(this));
+        const inp = document.querySelector('.custom-range');
+        inp.disabled = true;
+        this.updates = true; // Ball moves
+    }
+
+    handleKeyUp(e) {
+        if (e.key === ' ') {
+            document.removeEventListener('keydown', this.keys.bind(this));
+            this.updates = true; // Ball moves   
+        }
+    }
+
+    checkCollision() {
+        this.boxes = this.boxes.filter(box => {
+            // Check for collision with the box
+            if (this.ball.x + this.ball.r > box.x && this.ball.x - this.ball.r < box.x + box.width &&
+                this.ball.y + this.ball.r > box.y && this.ball.y - this.ball.r < box.y + box.height) {
+
+                // Determine which side of the box the ball hit
+                const overlapLeft = (this.ball.x + this.ball.r) - box.x;
+                const overlapRight = (box.x + box.width) - (this.ball.x - this.ball.r);
+                const overlapTop = (this.ball.y + this.ball.r) - box.y;
+                const overlapBottom = (box.y + box.height) - (this.ball.y - this.ball.r);
+
+                // Find the smallest overlap
+                const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
+
+                // Reflect the ball based on which side was hit
+                if (minOverlap === overlapLeft) {
+                    this.rAngle = 180 - this.rAngle; // Reflect horizontally
+                    this.ball.x = box.x - this.ball.r; // Move ball outside of box
+                } else if (minOverlap === overlapRight) {
+                    this.rAngle = 180 - this.rAngle; // Reflect horizontally
+                    this.ball.x = box.x + box.width + this.ball.r; // Move ball outside of box
+                } else if (minOverlap === overlapTop) {
+                    this.rAngle = -this.rAngle; // Reflect vertically
+                    this.ball.y = box.y - this.ball.r; // Move ball outside of box
+                } else if (minOverlap === overlapBottom) {
+                    this.rAngle = -this.rAngle; // Reflect vertically
+                    this.ball.y = box.y + box.height + this.ball.r; // Move ball outside of box
+                }
+
+                // Remove box
+                return false; 
+            }
+            return true; // Keep box
+        });
+    }
+
+    update() {
+        if (this.updates) {
+            const vx = Math.cos(this.rAngle * Math.PI / 180) * this.ball.speed;
+            const vy = Math.sin(this.rAngle * Math.PI / 180) * this.ball.speed;
+
+            // Update position
+            this.ball.x += vx;
+            this.ball.y -= vy;
+
+            // Boundary collision for the ball
+            if (this.ball.x - this.ball.r < 0 || this.ball.x + this.ball.r > this.canvas.width) {
+                this.rAngle = 180 - this.rAngle; // Reflect angle
+                this.ball.x = Math.max(this.ball.r, Math.min(this.ball.x, this.canvas.width - this.ball.r)); // Correct position
+            }
+            if (this.ball.y - this.ball.r < 0) {
+                this.rAngle = -this.rAngle; // Reflect angle
+                this.ball.y = Math.max(this.ball.r, Math.min(this.ball.y, this.canvas.height - this.ball.r)); // Correct position
+            }
+            if (this.ball.y + this.ball.r > this.canvas.height) {
+                document.addEventListener('keydown', this.keys.bind(this));
+                const inp = document.querySelector('.custom-range');
+                inp.disabled = false;
+                this.rAngle = 90;
+                document.querySelector('.custom-range').value = 90;
+                this.ball.y = this.canvas.height - this.ball.r; // Correct position at the bottom
+                this.updates = false; // Stop moving the ball
+                if (this.boxes.length === 0) setTimeout(this.boxFunc.bind(this), 1000);
+                this.boxes.forEach(box => {
+                    box.y += box.height;
+                    if (box.y + box.height >= this.canvas.height) {
+                        console.log('GameOver');
+                        this.gameOver = true;
+                    }
+                });
+                this.draw();
+            }
+        }
+
+        this.checkCollision(); // Check for collisions with boxes
+        this.draw(); // Draw the scene (ball and ray if stationary)
+    }
+
+    boxFunc() {
+        const numBox = Math.floor(Math.random() * (20 - 5 + 1)) + 5;
+        for (let i = 0; i < numBox; i++) {
+            this.createBox();
+        }
+    }
+
+    animate() {
+        this.update();
+        if (!this.gameOver) requestAnimationFrame(this.animate.bind(this));
+    }
+
+    resizeCanvas() {
+        if (window.innerHeight < window.innerWidth) {
+            this.canvas.width = window.innerWidth / 2;
+        } else {
+            this.canvas.width = window.innerWidth;
+        }
+        this.canvas.height = window.innerHeight / 3 * 2.8; // Or adjust based on desired aspect ratio
+
+        this.draw(); // Redraw on resize
+    }
+}
+
+new Game();
+</script>
